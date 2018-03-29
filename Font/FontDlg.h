@@ -22,8 +22,9 @@ typedef struct _STDRAW_
 
 	BITMAP m_stBmpInfo;
 	bool m_boIsInit;
+	unsigned char m_u8BitDepth;
 	char *m_pPic;
-	bool *m_pBoolPrint;
+	unsigned char *m_pPrint;
 	unsigned short m_u16Width;
 	unsigned short m_u16Height;
 	unsigned short m_u16RealWidth;
@@ -79,6 +80,25 @@ public:
 	void DrawPic();
 	void DrawString(bool boIsView = false, bool boIsCreateFile = false);
 	void DrawLoadBmp(CString csBmpName);
+	void DrawSetBitDepth(unsigned u8Depth) 
+	{
+		if (u8Depth < 2)
+		{
+			m_stDraw.m_u8BitDepth = 1;
+		}
+		else if (u8Depth < 4)
+		{
+			m_stDraw.m_u8BitDepth = 2;
+		}
+		else if (u8Depth < 8)
+		{
+			m_stDraw.m_u8BitDepth = 4;
+		}
+		else
+		{
+			m_stDraw.m_u8BitDepth = 8;
+		}
+	}
 	int m_s32RealWidth;
 	int m_s32RealHeight;
 	afx_msg void OnBnClickedBtnNew();
@@ -94,4 +114,5 @@ public:
 	BOOL m_boIsItalic;
 	BOOL m_boIsUnderLine;
 	BOOL m_boIsStrikeOut;
+	afx_msg void OnCbnSelchangeCombo2();
 };

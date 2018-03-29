@@ -74,6 +74,7 @@ BEGIN_MESSAGE_MAP(CFontDlg, CDialogEx)
 	ON_WM_MOUSEMOVE()
 	ON_BN_CLICKED(IDC_BTN_LOADBMP, &CFontDlg::OnBnClickedBtnLoadbmp)
 	ON_BN_CLICKED(IDC_BTN_Create_File, &CFontDlg::OnBnClickedBtnCreateFile)
+	ON_CBN_SELCHANGE(IDC_COMBO2, &CFontDlg::OnCbnSelchangeCombo2)
 END_MESSAGE_MAP()
 
 
@@ -139,7 +140,8 @@ void CFontDlg::DrawInit(HWND hWnd)
 	DWORD dwRectSize = s32Height / MAX_FONT_SIZE;
 
 	DWORD dwSize = (s32Height / dwRectSize) * (s32Width / dwRectSize);
-	m_stDraw.m_pBoolPrint = new bool [dwSize];
+	m_stDraw.m_pPrint = new unsigned char [dwSize];
+	m_stDraw.m_u8BitDepth = 8;
 #if 0
 	GetObject(m_stDraw.m_hBmp, sizeof(BITMAP), &(m_stDraw.m_stBmpInfo));
 
@@ -174,9 +176,9 @@ void CFontDlg::DrawDestroy()
 		delete [] m_stDraw.m_pPic;
 	}
 
-	if (m_stDraw.m_pBoolPrint)
+	if (m_stDraw.m_pPrint)
 	{
-		delete [] m_stDraw.m_pBoolPrint;
+		delete [] m_stDraw.m_pPrint;
 	}
 	
 
@@ -223,7 +225,7 @@ void CFontDlg::DrawClear()
 	{
 		return;
 	}
-	memset(m_stDraw.m_pBoolPrint, 0, m_stDraw.m_u16RealHeight * m_stDraw.m_u16RealWidth * sizeof(bool));
+	memset(m_stDraw.m_pPrint, 0, m_stDraw.m_u16RealHeight * m_stDraw.m_u16RealWidth * sizeof(bool));
 #if 0
 	SetDCBrushColor(m_stDraw.m_hMemDC, RGB(255,255,255));
 	SetDCPenColor(m_stDraw.m_hMemDC, RGB(0,0,0));
@@ -265,12 +267,29 @@ void CFontDlg::DrawPic()
 		for (uint16_t j = 0; j < m_stDraw.m_u16RealWidth; j++)
 		{
 			uint16_t u16WidthTmp = j * m_stDraw.m_u16RectSize;
-			bool boIsPrint = *(m_stDraw.m_pBoolPrint + i * m_stDraw.m_u16RealWidth + j);
+			unsigned char u8Print = *(m_stDraw.m_pPrint + i * m_stDraw.m_u16RealWidth + j);
+			
+			unsigned int u32Tmp = m_stDraw.m_u8BitDepth;
+
+			if (u8Print != 0)
+			{
+				unsigned char u8Tmp = 0;
+				unsigned char u8Fill = 8 - m_stDraw.m_u8BitDepth;
+				for (unsigned char i = 0; i < u8Fill; i++)
+				{
+					u8Tmp <<= 1;
+					u8Tmp |= 1;
+				}
+
+				u8Print <<= u8Fill;
+				u8Print |= u8Tmp;
+			}
+		
 			if ((i < m_stDraw.m_u16ValidHeight) && (j < m_stDraw.m_u16ValidWidth))
 			{
-				if (boIsPrint)
+				if (u8Print != 0)
 				{
-					SetDCBrushColor(m_stDraw.m_hMemDC, RGB(255,0,0));
+					SetDCBrushColor(m_stDraw.m_hMemDC, RGB(u8Print,0,0));
 				}
 				else
 				{
@@ -279,9 +298,9 @@ void CFontDlg::DrawPic()
 			}
 			else
 			{
-				if (boIsPrint)
+				if (u8Print)
 				{
-					SetDCBrushColor(m_stDraw.m_hMemDC, RGB(0,255,255));
+					SetDCBrushColor(m_stDraw.m_hMemDC, RGB(0, u8Print, u8Print));
 				}
 				else
 				{
@@ -448,7 +467,7 @@ void CFontDlg::DrawString(bool boIsView, bool boIsCreatFile)
 	{
 		Graphics graphics(m_stDraw.m_hTransferMemDC);
 
-		graphics.Clear(Color(ARGB(0 | 0xFFFFFFFF)));
+		graphics.Clear(Color(ARGB(0 | 0xFF000000)));
 		//{
 		//	SolidBrush csBrushTmp(Color(0xFFFFFFFF));
 		//	GraphicsPath csPath()
@@ -459,9 +478,9 @@ void CFontDlg::DrawString(bool boIsView, bool boIsCreatFile)
 		Gdiplus::Font csFont(m_stDraw.m_hTransferMemDC, hFont);
 		Gdiplus::PointF csPoint(0.0, 0.0);
 
-		Gdiplus::RectF csRect(0.0, 0.0, s32Size, s32Width);
+		Gdiplus::RectF csRect(0.0, 0.0, s32Width, s32Size);
 
-		SolidBrush csBrush(Color(0xFF000000));
+		SolidBrush csBrush(Color(0xFFFFFFFF));
 
 		Gdiplus::StringFormat csStringFromat;
 		csStringFromat.SetAlignment(StringAlignmentCenter);
@@ -469,8 +488,14 @@ void CFontDlg::DrawString(bool boIsView, bool boIsCreatFile)
 
 		graphics.SetTextRenderingHint(TextRenderingHintAntiAliasGridFit);
 		//graphics.SetTextRenderingHint(TextRenderingHintAntiAlias);
+		//graphics.SetTextRenderingHint(TextRenderingHintSystemDefault);
 
 		wstring csWStr = Convert(pStr);
+
+		//if (csWStr.c_str()[0] < 128)
+		//{
+		//	csRect.Width = csRect.Width / 2.0;
+		//}
 
 		//graphics.DrawString(csWStr.c_str(), csWStr.length(), &csFont, csPoint, &csBrush);
 		graphics.DrawString(csWStr.c_str(), csWStr.length(), &csFont, csRect, &csStringFromat, &csBrush);
@@ -484,32 +509,42 @@ void CFontDlg::DrawString(bool boIsView, bool boIsCreatFile)
 		s32Size, s32Width, (s16MechineCode >> 8 & 0xFF), (s16MechineCode & 0xFF),
 		s32Size * s32Width / 8);
 #else
-	csStr.Format("const StCHS_%d stCHS_%d_%d_%02X%02X = \r\n{\r\n\t0x%02X%02X,\r\n\t{\r\n\t\t",
+	csStr.Format("const StCHS_%d_%dBit%sstCHS_%d_%d_%02X%02X = \r\n{\r\n\t0x%02X%02X,\r\n\t{\r\n\t\t",
 		s32Size,
+		m_stDraw.m_u8BitDepth,
+		s32Size == s32Width ? " ": "_Half ",
 		s32Size, s32Width, 
 		(s16MechineCode >> 8 & 0xFF), (s16MechineCode & 0xFF), 
 		(s16MechineCode >> 8 & 0xFF), (s16MechineCode & 0xFF));
 #endif
 	CString csStrTmp;
-	s32Len = (s32Width + 7) / 8;
+	s32Len = (s32Width * m_stDraw.m_u8BitDepth + 7) / 8;
 	int *pTmp = new int [s32Len];
 	int s32Count = 0;
 	char *pRGBBuf = new char[s32Size * s32Width * 3];
 	char *pRGBTmp = pRGBBuf;
-	memset(m_stDraw.m_pBoolPrint, 0, m_stDraw.m_u16RealHeight * m_stDraw.m_u16RealWidth * sizeof(bool));
+	memset(m_stDraw.m_pPrint, 0, m_stDraw.m_u16RealHeight * m_stDraw.m_u16RealWidth * sizeof(bool));
 	for (int i = 0; i < s32Size; i++)
 	{
 		memset(pTmp, 0, sizeof(int) * s32Len);
 		for (int j = 0; j < s32Width; j++)
 		{
-			uint32_t u32Index = j / 8;
+			uint32_t u32Index = j * m_stDraw.m_u8BitDepth / 8;
 
 			uint32_t u32Tmp = GetPixel(m_stDraw.m_hTransferMemDC, j, i);
+#if 0
 			u32Tmp &= 0xFFFFFF;
 			if (u32Tmp != 0xFFFFFF)
+#else
+			u32Tmp &= 0xFFFFFF;
+			if (u32Tmp != 0x00)
+#endif
 			{
-				*(m_stDraw.m_pBoolPrint + i * m_stDraw.m_u16RealWidth + j) = true;
-				pTmp[u32Index] |= (1 << (7 - (j % 8)));
+				unsigned char u8Tmp = (unsigned char)u32Tmp;
+				u8Tmp >>= (8 - m_stDraw.m_u8BitDepth);
+				*(m_stDraw.m_pPrint + i * m_stDraw.m_u16RealWidth + j) = u8Tmp;
+
+				pTmp[u32Index] |= (u8Tmp << ((8 - m_stDraw.m_u8BitDepth) - (j * m_stDraw.m_u8BitDepth % 8)));
 			}
 			pRGBTmp[0] = (char)(u32Tmp >> 16);
 			pRGBTmp[1] = (char)(u32Tmp >> 8);
@@ -543,7 +578,7 @@ void CFontDlg::DrawString(bool boIsView, bool boIsCreatFile)
 			fclose(pFile);
 		}
 	}
-	if (1)
+	if (0)
 	{
 		FILE *pFile = fopen("g:\\123.bmp", "wb+");
 		if (pFile != NULL)
@@ -626,7 +661,7 @@ void CFontDlg::DrawString(bool boIsView, bool boIsCreatFile)
 	s32Len = (s32Size + 7) / 8;
 	int *pTmp = new int[s32Len];
 	int s32Count = 0;
-	memset(m_stDraw.m_pBoolPrint, 0, m_stDraw.m_u16RealHeight * m_stDraw.m_u16RealWidth * sizeof(bool));
+	memset(m_stDraw.m_pPrint, 0, m_stDraw.m_u16RealHeight * m_stDraw.m_u16RealWidth * sizeof(bool));
 	for (int i = 0; i < s32Width; i++)
 	{
 		memset(pTmp, 0, sizeof(int) * s32Len);
@@ -638,7 +673,7 @@ void CFontDlg::DrawString(bool boIsView, bool boIsCreatFile)
 			u32Tmp &= 0xFFFFFF;
 			if (u32Tmp != 0xFFFFFF)
 			{
-				*(m_stDraw.m_pBoolPrint + j * m_stDraw.m_u16RealWidth + i) = true;
+				*(m_stDraw.m_pPrint + j * m_stDraw.m_u16RealWidth + i) = true;
 				pTmp[u32Index] |= (1 << (j % 8));
 			}
 		}
@@ -693,7 +728,7 @@ void CFontDlg::DrawLoadBmp(CString csBmpName)
 	StretchBlt(m_stDraw.m_hTransferMemDC, 0, 0, m_stDraw.m_u16ValidWidth, m_stDraw.m_u16ValidHeight,
 		hMemdc, 0, 0, bmpTmp.bmWidth, bmpTmp.bmHeight,SRCCOPY);
 
-	memset(m_stDraw.m_pBoolPrint, 0, m_stDraw.m_u16RealHeight * m_stDraw.m_u16RealWidth * sizeof(bool));
+	memset(m_stDraw.m_pPrint, 0, m_stDraw.m_u16RealHeight * m_stDraw.m_u16RealWidth * sizeof(bool));
 	for (int i = 0; i < m_stDraw.m_u16ValidHeight; i++)
 	{
 		for (int j = 0; j < m_stDraw.m_u16ValidWidth; j++)
@@ -708,7 +743,7 @@ void CFontDlg::DrawLoadBmp(CString csBmpName)
 			B &= 0xFF;
 			if ((R > 127) && (G > 127) &&(B > 127))
 			{
-				*(m_stDraw.m_pBoolPrint + i * m_stDraw.m_u16RealWidth + j) = true;
+				*(m_stDraw.m_pPrint + i * m_stDraw.m_u16RealWidth + j) = true;
 			}
 		}
 	}
@@ -767,6 +802,15 @@ BOOL CFontDlg::OnInitDialog()
 		m_ComboFont.AddString(csFontName[i]);
 	}
 	s32CurSel = m_ComboFont.FindString(-1, "宋体");
+
+	((CComboBox *)(GetDlgItem(IDC_COMBO2)))->AddString("1");
+	((CComboBox *)(GetDlgItem(IDC_COMBO2)))->AddString("2");
+	((CComboBox *)(GetDlgItem(IDC_COMBO2)))->AddString("4");
+	((CComboBox *)(GetDlgItem(IDC_COMBO2)))->AddString("8");
+	((CComboBox *)(GetDlgItem(IDC_COMBO2)))->SetCurSel(2);
+
+	m_stDraw.m_u8BitDepth = 4;
+
 
 	m_objEditInput.SetLimitText(2);
 #if 0
@@ -853,7 +897,7 @@ void CFontDlg::OnBnClickedBtnCreate()
 		for (int j = 0; j < m_stDraw.m_u16ValidWidth; j++)
 		{
 			uint32_t u32Index = j / 8;
-			bool boIsFlag = *(m_stDraw.m_pBoolPrint + i * m_stDraw.m_u16RealWidth + j);
+			bool boIsFlag = *(m_stDraw.m_pPrint + i * m_stDraw.m_u16RealWidth + j);
 			if (boIsFlag)
 			{
 				pTmp[u32Index] |= (1 << (7 - (j % 8)));
@@ -908,8 +952,22 @@ void CFontDlg::OnLButtonUp(UINT nFlags, CPoint point)
 			int s32XPos = (point.x - m_stDraw.m_stRect.left) / m_stDraw.m_u16RectSize;
 			int s32YPos = (point.y - m_stDraw.m_stRect.top) / m_stDraw.m_u16RectSize;
 
-			bool *pIsFlag = m_stDraw.m_pBoolPrint + s32YPos * m_stDraw.m_u16RealWidth + s32XPos;
-			*pIsFlag = !(*pIsFlag);
+			unsigned char *pValue = m_stDraw.m_pPrint + s32YPos * m_stDraw.m_u16RealWidth + s32XPos;
+			
+			if (pValue[0] == 0)
+			{
+				unsigned char u8Tmp = 0;
+				for (unsigned char i = 0; i < m_stDraw.m_u8BitDepth; i++)
+				{
+					u8Tmp <<= 1;
+					u8Tmp |= 1;
+				}
+				pValue[0] = u8Tmp;
+			}
+			else
+			{
+				pValue[0] = 0;
+			}
 		}
 	}
 	else
@@ -923,8 +981,21 @@ void CFontDlg::OnLButtonUp(UINT nFlags, CPoint point)
 				int s32XPos = (i - m_stDraw.m_stRect.left) / m_stDraw.m_u16RectSize;
 				int s32YPos = (j - m_stDraw.m_stRect.top) / m_stDraw.m_u16RectSize;
 
-				bool *pIsFlag = m_stDraw.m_pBoolPrint + s32YPos * m_stDraw.m_u16RealWidth + s32XPos;
-				*pIsFlag = !(*pIsFlag);
+				unsigned char *pValue = m_stDraw.m_pPrint + s32YPos * m_stDraw.m_u16RealWidth + s32XPos;
+				if (pValue[0] == 0)
+				{
+					unsigned char u8Tmp = 0;
+					for (unsigned char i = 0; i < m_stDraw.m_u8BitDepth; i++)
+					{
+						u8Tmp <<= 1;
+						u8Tmp |= 1;
+					}
+					pValue[0] = u8Tmp;
+				}
+				else
+				{
+					pValue[0] = 0;
+				}
 			}
 		}
 
@@ -980,4 +1051,13 @@ void CFontDlg::OnBnClickedBtnCreateFile()
 		DrawString(true, true);
 	}
 
+}
+
+
+void CFontDlg::OnCbnSelchangeCombo2()
+{
+	// TODO: 在此添加控件通知处理程序代码
+	int s32Sel = ((CComboBox *)(GetDlgItem(IDC_COMBO2)))->GetCurSel();
+	s32Sel = s32Sel;
+	DrawSetBitDepth(1 << s32Sel);
 }
